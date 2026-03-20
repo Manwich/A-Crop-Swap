@@ -1,0 +1,52 @@
+{
+    "2bd1c688-31c5-443e-ae25-59aa5b6431fb": {
+        "id": "639a4c74-ec5b-4f2b-aaf8-99ca92260b78",
+        "name": "REST API",
+        "designId": "e88328d3-07a9-4129-bbbf-85dcca5848a8",
+        "pluginId": "2bd1c688-31c5-443e-ae25-59aa5b6431fb",
+        "publicData": {}
+    },
+    "f9ef41c3-1c53-4857-855b-f2f6a40b7186": {
+        "id": "81a917d2-5a1a-4ef9-8c87-f1a4b78e1692",
+        "name": "Supabase",
+        "designId": "e88328d3-07a9-4129-bbbf-85dcca5848a8",
+        "pluginId": "f9ef41c3-1c53-4857-855b-f2f6a40b7186",
+        "publicData": {
+            "apiKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5kaWVyaGd5aGJ6eW9ycG90cXFvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM0MjQzNTAsImV4cCI6MjA4OTAwMDM1MH0.KXkXa_9V_uYa5bP7FSe3KTz91qDs3sIib1Ip4Exxl-0",
+            "projectUrl": "https://ndierhgyhbzyorpotqqo.supabase.co",
+            "customDomain": "",
+            "environments": {
+                "production": {
+                    "apiKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5kaWVyaGd5aGJ6eW9ycG90cXFvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM0MjQzNTAsImV4cCI6MjA4OTAwMDM1MH0.KXkXa_9V_uYa5bP7FSe3KTz91qDs3sIib1Ip4Exxl-0",
+                    "branch": null,
+                    "branchSlug": null,
+                    "projectUrl": "https://ndierhgyhbzyorpotqqo.supabase.co",
+                    "customDomain": "",
+                    "baseProjectRef": "ndierhgyhbzyorpotqqo"
+                }
+            },
+            "realtimeTables": {}
+        }
+    },
+    "1fa0dd68-5069-436c-9a7d-3b54c340f1fa": {
+        "id": "fa22b7d8-d1b0-416b-b1da-21ae0454fcc6",
+        "name": "Supabase Auth",
+        "designId": "e88328d3-07a9-4129-bbbf-85dcca5848a8",
+        "pluginId": "1fa0dd68-5069-436c-9a7d-3b54c340f1fa",
+        "publicData": {
+            "apiKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5kaWVyaGd5aGJ6eW9ycG90cXFvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM0MjQzNTAsImV4cCI6MjA4OTAwMDM1MH0.KXkXa_9V_uYa5bP7FSe3KTz91qDs3sIib1Ip4Exxl-0",
+            "projectUrl": "https://ndierhgyhbzyorpotqqo.supabase.co",
+            "customDomain": "",
+            "environments": {
+                "production": {
+                    "apiKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5kaWVyaGd5aGJ6eW9ycG90cXFvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM0MjQzNTAsImV4cCI6MjA4OTAwMDM1MH0.KXkXa_9V_uYa5bP7FSe3KTz91qDs3sIib1Ip4Exxl-0",
+                    "branch": null,
+                    "branchSlug": null,
+                    "projectUrl": "https://ndierhgyhbzyorpotqqo.supabase.co",
+                    "customDomain": "",
+                    "baseProjectRef": "ndierhgyhbzyorpotqqo"
+                }
+            }
+        }
+    }
+}
