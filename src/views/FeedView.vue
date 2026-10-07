@@ -37,7 +37,7 @@
             <button class="btn btn--ghost" type="button" @click="clearFilters">Clear filters</button>
         </div>
         <div v-else class="grid">
-            <ListingCard v-for="l in filtered" :key="l.id" :listing="l" :poster-name="names[l.poster_id]" />
+            <ListingCard v-for="l in filtered" :key="l.id" :listing="l" :poster-name="names[l.poster_id]" :cover-url="covers[l.id]" />
         </div>
     </div>
 </template>
@@ -47,9 +47,11 @@ import { computed, onMounted, ref } from 'vue';
 import ListingCard from '../components/ListingCard.vue';
 import { supabase, friendlyError } from '../lib/supabase.js';
 import { loadNames } from '../lib/format.js';
+import { loadCovers } from '../lib/photos.js';
 
 const listings = ref([]);
 const names = ref({});
+const covers = ref({});
 const loading = ref(true);
 const error = ref('');
 const search = ref('');
@@ -79,7 +81,10 @@ onMounted(async () => {
         .order('created_at', { ascending: false });
     if (err) error.value = friendlyError(err);
     listings.value = data || [];
-    names.value = await loadNames(supabase, listings.value.map(l => l.poster_id));
+    [names.value, covers.value] = await Promise.all([
+        loadNames(supabase, listings.value.map(l => l.poster_id)),
+        loadCovers(listings.value.map(l => l.id)),
+    ]);
     loading.value = false;
 });
 </script>

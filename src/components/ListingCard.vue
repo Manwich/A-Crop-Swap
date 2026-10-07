@@ -1,6 +1,7 @@
 <template>
     <RouterLink :to="`/listings/${listing.id}`" class="listing-card">
-        <div class="listing-card__art" :class="`listing-card__art--${listing.type}`" aria-hidden="true">
+        <img v-if="coverUrl" class="listing-card__photo" :src="coverUrl" :alt="listing.title" loading="lazy" />
+        <div v-else class="listing-card__art" :class="`listing-card__art--${listing.type}`" aria-hidden="true">
             {{ listing.type === 'fruit' ? '🍑' : '🧶' }}
         </div>
         <div class="listing-card__body">
@@ -25,6 +26,7 @@ import { TYPE_LABELS, AVAILABILITY_LABELS, shortDate } from '../lib/format.js';
 defineProps({
     listing: { type: Object, required: true },
     posterName: { type: String, default: '' },
+    coverUrl: { type: String, default: '' },
 });
 </script>
 
@@ -45,10 +47,17 @@ defineProps({
     transform: translateY(-2px);
     box-shadow: 0 8px 24px rgb(17 24 39 / 0.1);
 }
+.listing-card__photo {
+    display: block;
+    width: 100%;
+    height: 168px;
+    object-fit: cover;
+    background: var(--surface-sunken);
+}
 .listing-card__art {
     display: grid;
     place-items: center;
-    height: 112px;
+    height: 168px;
     font-size: 2.75rem;
 }
 .listing-card__art--fruit {

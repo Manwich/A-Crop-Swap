@@ -1,5 +1,5 @@
 <template>
-    <form @submit.prevent="emit('submit', { ...form })" novalidate>
+    <form @submit.prevent="emit('submit', { ...form }, files)" novalidate>
         <label class="field">
             <span class="field__label">What are you sharing?</span>
             <input v-model.trim="form.title" class="input" type="text" maxlength="120" placeholder="e.g. Meyer lemons, a bag of 10" required />
@@ -38,6 +38,8 @@
             <textarea v-model.trim="form.description" class="textarea" maxlength="1000" placeholder="How much, when it should ripen, where to pick up…"></textarea>
         </label>
 
+        <PhotoPicker v-if="withPhotos" v-model="files" />
+
         <div v-if="error" class="alert alert--error" role="alert">{{ error }}</div>
         <div class="actions">
             <button class="btn btn--primary" :disabled="busy">{{ busy ? 'Saving…' : submitLabel }}</button>
@@ -47,14 +49,17 @@
 </template>
 
 <script setup>
-import { reactive } from 'vue';
+import { reactive, ref } from 'vue';
+import PhotoPicker from './PhotoPicker.vue';
 
 const props = defineProps({
     initial: { type: Object, default: () => ({}) },
     submitLabel: { type: String, default: 'Save' },
     busy: Boolean,
     error: String,
+    withPhotos: Boolean,
 });
+const files = ref([]);
 const emit = defineEmits(['submit']);
 
 const form = reactive({

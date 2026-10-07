@@ -15,7 +15,8 @@
             <div v-if="error" class="alert alert--error" role="alert">{{ error }}</div>
 
             <article v-if="!editing" class="card">
-                <div class="art" :class="`art--${listing.type}`" aria-hidden="true">{{ listing.type === 'fruit' ? '🍑' : '🧶' }}</div>
+                <PhotoGallery v-if="photos.length" :photos="photos" :title="listing.title" />
+                <div v-else class="art" :class="`art--${listing.type}`" aria-hidden="true">{{ listing.type === 'fruit' ? '🍑' : '🧶' }}</div>
                 <div class="badges">
                     <span class="badge" :class="`badge--${listing.type}`">{{ TYPE_LABELS[listing.type] }}</span>
                     <span class="badge" :class="listing.availability === 'future' ? 'badge--warning' : 'badge--success'">
@@ -40,6 +41,8 @@
                     </template>
                 </ListingForm>
             </div>
+
+            <PhotoManager v-if="isMine && !editing" :listing-id="listing.id" :title="listing.title" :photos="photos" @changed="refreshPhotos" />
 
             <!-- Poster: what's happening with this listing -->
             <section v-if="isMine && !editing" class="card">
@@ -116,6 +119,9 @@
 import { computed, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import ListingForm from '../components/ListingForm.vue';
+import PhotoGallery from '../components/PhotoGallery.vue';
+import PhotoManager from '../components/PhotoManager.vue';
+import { loadPhotos, removeAllFiles } from '../lib/photos.js';
 import { supabase, friendlyError } from '../lib/supabase.js';
 import { session, refreshNeighbor } from '../lib/session.js';
 import { TYPE_LABELS, AVAILABILITY_LABELS, RESERVATION_STATUS, credits, shortDate, loadNames } from '../lib/format.js';
@@ -128,6 +134,7 @@ const listing = ref(null);
 const posterName = ref('');
 const exchanges = ref([]);
 const reservations = ref([]);
+const photos = ref([]);
 const reservedByOther = ref(false);
 const loading = ref(true);
 const busy = ref(false);
@@ -161,18 +168,24 @@ async function load() {
     if (err && !/invalid input syntax/i.test(err.message)) error.value = friendlyError(err);
     listing.value = data;
     if (data) {
-        const [names, ex, res, active] = await Promise.all([
+        const [names, ex, res, active, pics] = await Promise.all([
             loadNames(supabase, [data.poster_id]),
             supabase.from('exchanges').select('*').eq('listing_id', id),
             supabase.from('reservations').select('*').eq('listing_id', id),
             supabase.rpc('listing_has_active_reservation', { p_listing_id: id }),
+            loadPhotos(id),
         ]);
+        photos.value = pics.photos;
         posterName.value = names[data.poster_id] || '';
         exchanges.value = ex.data || [];
         reservations.value = res.data || [];
         reservedByOther.value = !!active.data;
     }
     loading.value = false;
+}
+
+async function refreshPhotos() {
+    photos.value = (await loadPhotos(listing.value.id)).photos;
 }
 
 async function run(action, successMessage) {
@@ -206,15 +219,27 @@ async function save(form) {
 }
 
 async function remove() {
-    if (!confirm('Remove this listing? Any open trades on it will be removed too.')) return;
+    if (!confirm('Remove this listing? Its photos and any open trades on it will be removed too.')) return;
     busy.value = true;
+    await removeAllFiles(listing.value.id);
     const { error: err } = await supabase.from('listings').delete().eq('id', listing.value.id);
     busy.value = false;
     if (err) return (error.value = friendlyError(err));
     router.replace('/profile');
 }
 
-watch(() => route.params.id, () => route.name === 'listing' && load(), { immediate: true });
+watch(
+    () => route.params.id,
+    async () => {
+        if (route.name !== 'listing') return;
+        await load();
+        if (route.query.photos === 'failed') {
+            error.value = 'Your listing was posted, but some photos didn’t upload. Add them again below.';
+            router.replace({ query: {} });
+        }
+    },
+    { immediate: true }
+);
 </script>
 
 <style scoped>

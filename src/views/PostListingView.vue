@@ -7,7 +7,7 @@
             </div>
         </div>
         <div class="card">
-            <ListingForm submit-label="Post listing" :busy="busy" :error="error" @submit="post">
+            <ListingForm :submit-label="busy && status ? status : 'Post listing'" :busy="busy" :error="error" with-photos @submit="post">
                 <template #actions>
                     <RouterLink to="/home" class="btn btn--ghost">Cancel</RouterLink>
                 </template>
@@ -22,12 +22,14 @@ import { useRouter } from 'vue-router';
 import ListingForm from '../components/ListingForm.vue';
 import { supabase, friendlyError } from '../lib/supabase.js';
 import { session, refreshNeighbor } from '../lib/session.js';
+import { addPhotos } from '../lib/photos.js';
 
 const router = useRouter();
 const busy = ref(false);
 const error = ref('');
+const status = ref('');
 
-async function post(form) {
+async function post(form, files = []) {
     error.value = '';
     if (!form.title) return (error.value = 'Give your listing a title.');
     busy.value = true;
@@ -41,8 +43,16 @@ async function post(form) {
         .insert({ ...form, description: form.description || null, poster_id: neighbor.id })
         .select('id')
         .single();
+    if (err) {
+        busy.value = false;
+        return (error.value = friendlyError(err));
+    }
+    let photoError = '';
+    if (files.length) {
+        const result = await addPhotos(data.id, files, 0, (n, total) => (status.value = `Uploading photo ${n} of ${total}…`));
+        photoError = result.error;
+    }
     busy.value = false;
-    if (err) return (error.value = friendlyError(err));
-    router.push(`/listings/${data.id}`);
+    router.push({ path: `/listings/${data.id}`, query: photoError ? { photos: 'failed' } : {} });
 }
 </script>

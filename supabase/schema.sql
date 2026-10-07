@@ -1,6 +1,7 @@
 -- A Crop Swap — database schema for Supabase (Postgres).
 -- Run once in the Supabase SQL editor (Dashboard → SQL Editor → New query → paste → Run).
--- Safe to re-run: it drops and recreates everything in the app's tables.
+-- Re-running drops and recreates the app's tables, deleting all app data. Photo files already in
+-- the "listing-photos" bucket are not deleted; empty the bucket in Dashboard → Storage if you reset.
 --
 -- Blueprint mapping
 --   D-1 User         → auth.users (Supabase Auth; email is unique app-wide)
@@ -8,14 +9,17 @@
 --   D-3 Listing      → public.listings
 --   D-4 Exchange     → public.exchanges
 --   D-5 Reservation  → public.reservations
+--   D-6 Listing Photo → public.listing_photos + private storage bucket "listing-photos"
 --   W-1/W-2/W-3      → the security-definer functions at the bottom
 --
+-- New neighbors start with 5 credits (blueprint v1.2.0).
 -- Credits never change through a direct table write: authenticated users have no
 -- UPDATE grant on neighbors.credit_balance, and every credit movement happens inside
 -- one of the functions below (RU-4).
 
 -- ─── Reset ────────────────────────────────────────────────────────────────────
 drop trigger if exists on_auth_user_created on auth.users;
+drop table if exists public.listing_photos cascade;
 drop table if exists public.reservations cascade;
 drop table if exists public.exchanges cascade;
 drop table if exists public.listings cascade;
@@ -36,7 +40,7 @@ create table public.neighbors (
   managed_by     uuid not null unique references auth.users (id) on delete cascade,
   name           text not null check (length(trim(name)) > 0),
   role           text not null default 'neighbor' check (role = 'neighbor'),
-  credit_balance integer not null default 0 check (credit_balance >= 0),
+  credit_balance integer not null default 5 check (credit_balance >= 0),
   created_at     timestamptz not null default now()
 );
 
@@ -79,6 +83,17 @@ create index reservations_reserver_idx on public.reservations (reserver_id);
 create unique index reservations_one_active_per_listing
   on public.reservations (listing_id) where status in ('reserved', 'ready');
 
+-- D-6: up to 4 photos per listing (positions 0-3, unique per listing); position 0 is the cover.
+create table public.listing_photos (
+  id         uuid primary key default gen_random_uuid(),
+  listing_id uuid not null references public.listings (id) on delete cascade,
+  path       text not null unique,
+  position   smallint not null check (position between 0 and 3),
+  created_at timestamptz not null default now(),
+  constraint listing_photos_one_per_position unique (listing_id, position) deferrable initially immediate,
+  check (path like listing_id::text || '/%')
+);
+
 -- ─── Helpers ──────────────────────────────────────────────────────────────────
 create or replace function public.current_neighbor_id()
 returns uuid language sql stable security definer set search_path = public as $$
@@ -111,8 +126,9 @@ alter table public.neighbors    enable row level security;
 alter table public.listings     enable row level security;
 alter table public.exchanges    enable row level security;
 alter table public.reservations enable row level security;
+alter table public.listing_photos enable row level security;
 
-revoke all on public.neighbors, public.listings, public.exchanges, public.reservations from anon, authenticated;
+revoke all on public.neighbors, public.listings, public.exchanges, public.reservations, public.listing_photos from anon, authenticated;
 revoke all on public.neighbor_names from anon, authenticated;
 
 -- Neighbors: read and edit only your own record (RU-1, RU-6, A-15); only the name is editable.
@@ -123,7 +139,7 @@ grant select on public.neighbor_names to authenticated;
 create policy "neighbors: read own" on public.neighbors
   for select to authenticated using (managed_by = auth.uid());
 create policy "neighbors: create own" on public.neighbors
-  for insert to authenticated with check (managed_by = auth.uid() and credit_balance = 0);
+  for insert to authenticated with check (managed_by = auth.uid() and credit_balance = 5);
 create policy "neighbors: edit own" on public.neighbors
   for update to authenticated using (managed_by = auth.uid()) with check (managed_by = auth.uid());
 
@@ -156,6 +172,51 @@ create policy "reservations: reserver and poster read" on public.reservations
     or exists (select 1 from public.listings l
                where l.id = listing_id and l.poster_id = public.current_neighbor_id())
   );
+
+-- Listing photos: every signed-in member sees them; only the listing's poster adds or removes (RU-34, RU-36).
+-- Reordering goes through reorder_listing_photos below.
+grant select, insert, delete on public.listing_photos to authenticated;
+
+create policy "photos: signed-in members read all" on public.listing_photos
+  for select to authenticated using (true);
+create policy "photos: poster adds" on public.listing_photos
+  for insert to authenticated
+  with check (exists (select 1 from public.listings l
+                      where l.id = listing_id and l.poster_id = public.current_neighbor_id()));
+create policy "photos: poster removes" on public.listing_photos
+  for delete to authenticated
+  using (exists (select 1 from public.listings l
+                 where l.id = listing_id and l.poster_id = public.current_neighbor_id()));
+
+-- ─── Photo storage ────────────────────────────────────────────────────────────
+-- Private bucket: no public links; signed-in members get short-lived signed URLs (RU-36).
+-- Uploads are already resized JPEGs from the browser; the bucket still enforces type and size (RU-38).
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('listing-photos', 'listing-photos', false, 5242880, array['image/jpeg', 'image/png', 'image/webp'])
+on conflict (id) do update
+  set public = excluded.public,
+      file_size_limit = excluded.file_size_limit,
+      allowed_mime_types = excluded.allowed_mime_types;
+
+-- Files live at <listing id>/<photo id>.jpg; only that listing's poster may write or delete there.
+create or replace function public.is_listing_poster(p_folder text)
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (select 1 from public.listings
+                 where id::text = p_folder and poster_id = public.current_neighbor_id())
+$$;
+
+drop policy if exists "listing photos: members read" on storage.objects;
+drop policy if exists "listing photos: poster uploads" on storage.objects;
+drop policy if exists "listing photos: poster deletes" on storage.objects;
+
+create policy "listing photos: members read" on storage.objects
+  for select to authenticated using (bucket_id = 'listing-photos');
+create policy "listing photos: poster uploads" on storage.objects
+  for insert to authenticated
+  with check (bucket_id = 'listing-photos' and public.is_listing_poster((storage.foldername(name))[1]));
+create policy "listing photos: poster deletes" on storage.objects
+  for delete to authenticated
+  using (bucket_id = 'listing-photos' and public.is_listing_poster((storage.foldername(name))[1]));
 
 -- ─── Workflows ────────────────────────────────────────────────────────────────
 
@@ -322,8 +383,33 @@ begin
 end;
 $$;
 
+-- Poster sets the photo order; the first id becomes the cover (RU-34, RU-35).
+create or replace function public.reorder_listing_photos(p_listing_id uuid, p_photo_ids uuid[])
+returns void language plpgsql security definer set search_path = public as $$
+declare
+  i integer;
+begin
+  if not exists (select 1 from public.listings
+                 where id = p_listing_id and poster_id = public.current_neighbor_id()) then
+    raise exception 'Only the listing''s poster can reorder its photos' using errcode = '42501';
+  end if;
+  if (select count(*) from public.listing_photos where listing_id = p_listing_id) <> coalesce(array_length(p_photo_ids, 1), 0)
+     or (select count(distinct x) from unnest(p_photo_ids) as x) <> coalesce(array_length(p_photo_ids, 1), 0)
+     or exists (select 1 from unnest(p_photo_ids) as x(id)
+                where not exists (select 1 from public.listing_photos p where p.id = x.id and p.listing_id = p_listing_id)) then
+    raise exception 'The new order must list each of this listing''s photos exactly once';
+  end if;
+  set constraints public.listing_photos_one_per_position deferred;
+  for i in 1 .. array_length(p_photo_ids, 1) loop
+    update public.listing_photos set position = i - 1 where id = p_photo_ids[i];
+  end loop;
+end;
+$$;
+
 revoke execute on function
   public.current_neighbor_id(),
+  public.is_listing_poster(text),
+  public.reorder_listing_photos(uuid, uuid[]),
   public.handle_new_user(),
   public.listing_has_active_reservation(uuid),
   public.start_exchange(uuid),
@@ -335,6 +421,8 @@ revoke execute on function
 from public, anon, authenticated;
 grant execute on function
   public.current_neighbor_id(),
+  public.is_listing_poster(text),
+  public.reorder_listing_photos(uuid, uuid[]),
   public.listing_has_active_reservation(uuid),
   public.start_exchange(uuid),
   public.confirm_exchange(uuid),

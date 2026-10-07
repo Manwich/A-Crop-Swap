@@ -35,7 +35,7 @@
                 <RouterLink to="/post" class="btn btn--primary">Post your first listing</RouterLink>
             </div>
             <div v-else class="grid">
-                <ListingCard v-for="l in listings" :key="l.id" :listing="l" />
+                <ListingCard v-for="l in listings" :key="l.id" :listing="l" :cover-url="covers[l.id]" />
             </div>
         </template>
     </div>
@@ -46,8 +46,10 @@ import { computed, onMounted, ref } from 'vue';
 import ListingCard from '../components/ListingCard.vue';
 import { supabase, friendlyError } from '../lib/supabase.js';
 import { session, refreshNeighbor } from '../lib/session.js';
+import { loadCovers } from '../lib/photos.js';
 
 const listings = ref([]);
+const covers = ref({});
 const loading = ref(true);
 const busy = ref(false);
 const error = ref('');
@@ -91,6 +93,7 @@ onMounted(async () => {
             .order('created_at', { ascending: false });
         if (err) error.value = friendlyError(err);
         listings.value = data || [];
+        covers.value = await loadCovers(listings.value.map(l => l.id));
     }
     loading.value = false;
 });

@@ -48,6 +48,20 @@ select pg_temp.fails($$insert into auth.users (email) values ('jane@example.com'
 select pg_temp.ok((select count(*) from public.neighbors) = 3, 'RU-3 one neighbor per account, created on signup');
 select pg_temp.ok((select name from public.neighbors where id = pg_temp.nid('cara@example.com')) = 'cara', 'name falls back to email prefix');
 
+-- A-53 everyone starts with exactly 5 credits and cannot pick another amount
+select pg_temp.ok((select bool_and(credit_balance = 5) from public.neighbors), 'A-53 new neighbors start with 5 credits');
+insert into auth.users (email) values ('dan@example.com');
+delete from public.neighbors where id = pg_temp.nid('dan@example.com');
+select pg_temp.act_as('dan@example.com');
+select pg_temp.fails($$insert into public.neighbors (managed_by, name, credit_balance) values (auth.uid(), 'Dan', 50)$$, 'A-53 cannot choose a bigger starting balance');
+insert into public.neighbors (managed_by, name) values (auth.uid(), 'Dan');
+select pg_temp.ok((select credit_balance from public.neighbors) = 5, 'A-53 self-created neighbor also starts with 5');
+reset role;
+delete from auth.users where email = 'dan@example.com';
+
+-- Test setup: empty the balances so the credit scenarios below start from 0.
+update public.neighbors set credit_balance = 0;
+
 -- A-12 / A-15 own record only
 select pg_temp.act_as('jane@example.com');
 select pg_temp.ok((select count(*) from public.neighbors) = 1, 'A-15 jane sees only her own neighbor record');
@@ -153,6 +167,52 @@ select pg_temp.act_as(null);
 select pg_temp.fails($$select * from public.listings$$, 'A-23 anon cannot read listings');
 select pg_temp.fails($$select * from public.neighbors$$, 'A-23 anon cannot read balances');
 select pg_temp.fails($$select public.reserve_listing(gen_random_uuid())$$, 'A-27 anon cannot act');
+
+-- ── Listing photos (v1.2.0) ──
+reset role;
+select pg_temp.ok((select not public and file_size_limit = 5242880 and allowed_mime_types = array['image/jpeg','image/png','image/webp'] from storage.buckets where id = 'listing-photos'), 'A-50 private bucket, 5 MB, JPEG/PNG/WebP only');
+
+select pg_temp.act_as('jane@example.com');
+create temp table plum as select id::text as lid from public.listings where title = 'Italian Plums';
+grant select on plum to anon, authenticated;
+-- A-45 poster uploads files and records them in order
+insert into storage.objects (bucket_id, name) select 'listing-photos', lid || '/p' || g || '.jpg' from plum, generate_series(0, 4) g;
+insert into public.listing_photos (listing_id, path, position) select lid::uuid, lid || '/p' || g || '.jpg', g from plum, generate_series(0, 3) g;
+select pg_temp.ok((select count(*) from public.listing_photos) = 4, 'A-45 poster adds 4 photos');
+-- A-46 fifth photo refused
+select pg_temp.fails($$insert into public.listing_photos (listing_id, path, position) select lid::uuid, lid || '/p4.jpg', 4 from plum$$, 'A-46 fifth photo refused (position 4)');
+select pg_temp.fails($$insert into public.listing_photos (listing_id, path, position) select lid::uuid, lid || '/p4.jpg', 0 from plum$$, 'A-46 fifth photo refused (positions full)');
+select pg_temp.fails($$insert into public.listing_photos (listing_id, path, position) select lid::uuid, 'elsewhere/p.jpg', 0 from plum$$, 'photo path must sit in the listing''s folder');
+-- reorder: last photo becomes cover
+select public.reorder_listing_photos((select lid::uuid from plum),
+  array(select id from public.listing_photos order by position desc));
+select pg_temp.ok((select path from public.listing_photos where position = 0) like '%/p3.jpg', 'A-45 poster reorders; new cover at position 0');
+select pg_temp.fails($$select public.reorder_listing_photos((select lid::uuid from plum), array(select id from public.listing_photos limit 2))$$, 'reorder must include every photo');
+
+-- A-47 non-poster cannot add, remove, reorder or touch files
+select pg_temp.act_as('bob@example.com');
+select pg_temp.ok((select count(*) from public.listing_photos) = 4, 'RU-36 other members can see the photos');
+select pg_temp.ok((select count(*) from storage.objects where bucket_id = 'listing-photos') >= 4, 'RU-36 other members can load the files');
+select pg_temp.fails($$insert into public.listing_photos (listing_id, path, position) select l.id, l.id::text || '/x.jpg', 3 from public.listings l where title = 'Italian Plums'$$, 'A-47 non-poster cannot add a photo row');
+delete from public.listing_photos;
+select pg_temp.ok((select count(*) from public.listing_photos) = 4, 'A-47 non-poster cannot remove photo rows');
+select pg_temp.fails($$select public.reorder_listing_photos((select id from public.listings where title = 'Italian Plums'), array(select id from public.listing_photos))$$, 'A-47 non-poster cannot reorder');
+select pg_temp.fails($$update public.listing_photos set position = 0$$, 'A-47 no direct position edits');
+select pg_temp.fails($$insert into storage.objects (bucket_id, name) select 'listing-photos', id::text || '/evil.jpg' from public.listings where title = 'Italian Plums'$$, 'A-47 non-poster cannot upload into the listing folder');
+delete from storage.objects where bucket_id = 'listing-photos';
+select pg_temp.ok((select count(*) from storage.objects where bucket_id = 'listing-photos') = 5, 'A-47 non-poster cannot delete files');
+
+-- A-48 signed-out visitors see nothing
+select pg_temp.act_as(null);
+select pg_temp.fails($$select * from public.listing_photos$$, 'A-48 anon cannot read photo rows');
+select pg_temp.ok((select count(*) from storage.objects) = 0, 'A-48 anon cannot see any files');
+
+-- A-52 removing a listing removes its photo rows; the poster may delete its files
+select pg_temp.act_as('jane@example.com');
+delete from storage.objects where bucket_id = 'listing-photos';
+select pg_temp.ok((select count(*) from storage.objects where bucket_id = 'listing-photos') = 0, 'A-52 poster deletes the listing''s files');
+delete from public.listings where title = 'Italian Plums';
+select pg_temp.ok((select count(*) from public.listing_photos) = 0, 'A-52 removing a listing removes its photo rows');
 
 reset role;
 \echo 'ALL ACCEPTANCE CHECKS PASSED'
