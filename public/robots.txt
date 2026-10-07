@@ -1,3 +1,7 @@
-User-agent:*
-Disallow:
-Sitemap: https://e88328d3-07a9-4129-bbbf-85dcca5848a8.weweb-preview.io/sitemap.xml
+User-agent: *
+Allow: /$
+Disallow: /home
+Disallow: /post
+Disallow: /listings/
+Disallow: /activity
+Disallow: /profile

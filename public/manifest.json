@@ -1,1 +1,1 @@
-{"name":"","short_name":"","icons":[],"start_url":"/","display":"fullscreen","scope":"/","background_color":"#FFFFFF","theme_color":"#FFFFFF"}
+{"name":"A Crop Swap","short_name":"Crop Swap","start_url":"/","display":"standalone","scope":"/","background_color":"#ffffff","theme_color":"#16a34a","icons":[{"src":"/favicon.svg","sizes":"any","type":"image/svg+xml"}]}
